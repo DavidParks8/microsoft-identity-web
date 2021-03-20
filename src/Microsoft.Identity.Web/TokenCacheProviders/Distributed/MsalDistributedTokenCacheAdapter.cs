@@ -231,16 +231,28 @@ namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
             }
 
             string json = Encoding.Default.GetString(bytes);
-            JsonDocument jsonDocument = JsonDocument.Parse(json);
-            foreach (JsonProperty property in jsonDocument.RootElement.EnumerateObject())
+            JsonDocument? jsonDocument;
+            try
             {
-                if (property.Name == "AccessToken")
+                jsonDocument = JsonDocument.Parse(json);
+            }
+            catch
+            {
+                jsonDocument = null;
+            }
+
+            if (jsonDocument != null)
+            {
+                foreach (JsonProperty property in jsonDocument.RootElement.EnumerateObject())
                 {
-                    JsonElement accessTokens = property.Value;
-                    foreach (JsonProperty oneAccessTokenProperty in accessTokens.EnumerateObject())
+                    if (property.Name == "AccessToken")
                     {
-                        JsonElement oneAccessToken = property.Value;
-                        VerifyOboAccessTokenShouldBeInCacheOfThisKey(cacheKey, oneAccessToken);
+                        JsonElement accessTokens = property.Value;
+                        foreach (JsonProperty oneAccessTokenProperty in accessTokens.EnumerateObject())
+                        {
+                            JsonElement oneAccessToken = property.Value;
+                            VerifyOboAccessTokenShouldBeInCacheOfThisKey(cacheKey, oneAccessToken);
+                        }
                     }
                 }
             }
