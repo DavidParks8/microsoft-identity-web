@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Identity.Client;
 
 namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
 {
@@ -127,6 +130,8 @@ namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
                        cacheKey).ConfigureAwait(false);
             }
 
+            VerifyIntegrity(cacheKey, result);
+
 #pragma warning disable CS8603 // Possible null reference return.
             return result;
 #pragma warning restore CS8603 // Possible null reference return.
@@ -140,6 +145,8 @@ namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
         /// <returns>A <see cref="Task"/> that completes when a write operation has completed.</returns>
         protected override async Task WriteCacheBytesAsync(string cacheKey, byte[] bytes)
         {
+            VerifyIntegrity(cacheKey, bytes);
+
             MemoryCacheEntryOptions memoryCacheEntryOptions = new MemoryCacheEntryOptions()
             {
                 AbsoluteExpirationRelativeToNow = _expirationTime,
@@ -214,6 +221,47 @@ namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
             }
 
             return result;
+        }
+
+        private void VerifyIntegrity(string cacheKey, byte[]? bytes)
+        {
+            if (bytes == null)
+            {
+                return;
+            }
+
+            string json = Encoding.Default.GetString(bytes);
+            JsonDocument jsonDocument = JsonDocument.Parse(json);
+            foreach (JsonProperty property in jsonDocument.RootElement.EnumerateObject())
+            {
+                if (property.Name == "AccessToken")
+                {
+                    JsonElement accessTokens = property.Value;
+                    foreach (JsonProperty oneAccessTokenProperty in accessTokens.EnumerateObject())
+                    {
+                        JsonElement oneAccessToken = property.Value;
+                        VerifyOboAccessTokenShouldBeInCacheOfThisKey(cacheKey, oneAccessToken);
+                    }
+                }
+            }
+        }
+
+        private static void VerifyOboAccessTokenShouldBeInCacheOfThisKey(string cacheKey, JsonElement oneAccessToken)
+        {
+            foreach (JsonProperty child in oneAccessToken.EnumerateObject())
+            {
+                foreach (JsonProperty jsonProperty in child.Value.EnumerateObject())
+                {
+                    if (jsonProperty.Name == "user_assertion_hash")
+                    {
+                        string hash = jsonProperty.Value.GetString();
+                        if (hash != cacheKey)
+                        {
+                            throw new MsalClientException("OBO token with user assertion not related to cache key");
+                        }
+                    }
+                }
+            }
         }
     }
 }
