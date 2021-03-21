@@ -266,7 +266,7 @@ namespace Microsoft.Identity.Web.TokenCacheProviders.Distributed
                 {
                     if (jsonProperty.Name == "user_assertion_hash")
                     {
-                        string hash = jsonProperty.Value.GetString();
+                        string? hash = jsonProperty.Value.GetString();
                         if (hash != cacheKey)
                         {
                             throw new MsalClientException("OBO token with user assertion not related to cache key");
